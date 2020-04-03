@@ -106,15 +106,35 @@ class WooCommerce_Custom_Orders_Table_CLI extends WP_CLI_Command {
 		$batch_count = 1;
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$order_data = $wpdb->get_col( $this->get_migration_query( 'p.ID', $assoc_args['batch-size'] ) );
+		//$order_data = $wpdb->get_col( $this->get_migration_query( 'p.ID', $assoc_args['batch-size'] ) );
 
-		while ( ! empty( $order_data ) ) {
+		$fork_count = 0;
+		$fork_pids = [];
+		$max_fork = 15;
+
+		$orders_per_fork = [];
+		for($i=0 ; $i<$max_fork; $i++) {
+			$orders_per_fork[] = array_filter(
+				$wpdb->get_col(
+					 //phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+					$this->get_migration_query( 'p.ID', $assoc_args['batch-size'], count( $this->skipped_ids ) + $assoc_args['batch-size'] * $i )
+					)
+				);
+		}
+			//var_dump(array_intersect(
+				//$orders_per_fork['0'],
+				//$orders_per_fork['1'],
+				//$orders_per_fork['2'],
+				//$orders_per_fork['3']
+				//));
+
+		while ( ! empty( $orders_per_fork ) ) {
 
 			// Debug message for batched migrations.
 			if ( 0 !== $assoc_args['batch-size'] ) {
 				WP_CLI::debug(
 					sprintf(
-						/* Translators: %1$d is the batch number, %2$d is the batch size. */
+						 //Translators: %1$d is the batch number, %2$d is the batch size.
 						__( 'Beginning batch #%1$d (%2$d orders/batch).', 'woocommerce-custom-orders-table' ),
 						$batch_count,
 						$assoc_args['batch-size']
@@ -122,21 +142,109 @@ class WooCommerce_Custom_Orders_Table_CLI extends WP_CLI_Command {
 				);
 			}
 
+			$fork_pids = [];
+			foreach ($orders_per_fork as $orders) {
+				$pid = pcntl_fork();
+				if ($pid == -1) {
+					die('could not fork');
+				} else if ($pid) {
+					 //We are in the parent.
+					$fork_pids[] = $pid;
+				} else {
+					 //We are in the fork.
+					$processed += $this->migrate_proces_order_data( $orders );
+					exit(0);
+				}
+			}
+
+			foreach ( $fork_pids as $fork_pid ) {
+				$progress->tick();
+				pcntl_waitpid($fork_pid, $status); //Protect against Zombie children
+			}
+
+			$next_orders_per_fork = [];
+			for($i=0 ; $i<$max_fork; $i++) {
+				$next_orders_per_fork[] = array_filter(
+					$wpdb->get_col(
+						 //phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+						$this->get_migration_query( 'p.ID', $assoc_args['batch-size'], count( $this->skipped_ids ) + $assoc_args['batch-size'] * $i )
+						)
+					);
+
+				//echo(PHP_EOL);
+				//echo($this->get_migration_query( 'p.ID', $assoc_args['batch-size'], count( $this->skipped_ids ) + $assoc_args['batch-size'] * $i ));
+				//echo(PHP_EOL);
+				//echo(count($next_orders_per_fork[$i]));
+			}
+				//echo(PHP_EOL);
+				//var_dump(array_intersect(
+					//$next_orders_per_fork['0'],
+					//$next_orders_per_fork['1'],
+					//$next_orders_per_fork['2'],
+					//$next_orders_per_fork['3']
+					//));
+				//echo(PHP_EOL);
+
+			if ( $next_orders_per_fork === $orders_per_fork ) {
+				return WP_CLI::error( __( 'Infinite loop detected, aborting.', 'woocommerce-custom-orders-table' ) );
+			} else {
+				$next_orders_per_fork = $orders_per_fork;
+				$batch_count++;
+			}
+
+		}
+
+		foreach ( $fork_pids as $fork_pid ) {
+			pcntl_waitpid($fork_pid, $status); //Protect against Zombie children
+		}
+
+		pcntl_wait($status); //Protect against Zombie children
+
+		$progress->finish();
+
+		// Issue a warning if no orders were migrated.
+		if ( ! $processed ) {
+			return WP_CLI::warning( __( 'No orders were migrated.', 'woocommerce-custom-orders-table' ) );
+		}
+
+		if ( empty( $this->skipped_ids ) ) {
+			return WP_CLI::success(
+				sprintf(
+					/* Translators: %1$d is the number of migrated orders. */
+					_n( '%1$d order was migrated.', '%1$d orders were migrated.', $processed, 'woocommerce-custom-orders-table' ),
+					$processed
+				)
+			);
+		} else {
+			WP_CLI::warning(
+				sprintf(
+					/* Translators: %1$d is the number of orders migrated, %2$d is the number of skipped records. */
+					_n( '%1$d order was migrated, with %2$d skipped.', '%1$d orders were migrated, with %2$d skipped.', $processed, 'woocommerce-custom-orders-table' ),
+					$processed,
+					count( $this->skipped_ids )
+				)
+			);
+		}
+	}
+
+	public function migrate_proces_order_data($order_data) {
+			$processed = 0;
 			// Iterate over each order in this batch.
 			foreach ( $order_data as $order_id ) {
 				$order = $this->get_order( $order_id );
+				//echo('loaded order ' . $order_id);
 
 				// Either an error occurred or wc_get_order() could not find the order.
 				if ( false === $order ) {
 					$this->skipped_ids[] = $order_id;
 
-					WP_CLI::warning(
-						sprintf(
+					//WP_CLI::warning(
+						//sprintf(
 							/* Translators: %1$d is the order ID. */
-							__( 'Unable to retrieve order with ID %1$d, skipping', 'woocommerce-custom-orders-table' ),
-							$order_id
-						)
-					);
+							//__( 'Unable to retrieve order with ID %1$d, skipping', 'woocommerce-custom-orders-table' ),
+							//$order_id
+						//)
+					//);
 
 				} else {
 					$result = $order->get_data_store()->populate_from_meta( $order, ! $assoc_args['save-post-meta'] );
@@ -173,49 +281,9 @@ class WooCommerce_Custom_Orders_Table_CLI extends WP_CLI_Command {
 					);
 				}
 
-				$progress->tick();
 			}
 
-			$next_batch = array_filter(
-				$wpdb->get_col(
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$this->get_migration_query( 'p.ID', $assoc_args['batch-size'], count( $this->skipped_ids ) )
-				)
-			);
-
-			if ( $next_batch === $order_data ) {
-				return WP_CLI::error( __( 'Infinite loop detected, aborting.', 'woocommerce-custom-orders-table' ) );
-			} else {
-				$order_data = $next_batch;
-				$batch_count++;
-			}
-		}
-
-		$progress->finish();
-
-		// Issue a warning if no orders were migrated.
-		if ( ! $processed ) {
-			return WP_CLI::warning( __( 'No orders were migrated.', 'woocommerce-custom-orders-table' ) );
-		}
-
-		if ( empty( $this->skipped_ids ) ) {
-			return WP_CLI::success(
-				sprintf(
-					/* Translators: %1$d is the number of migrated orders. */
-					_n( '%1$d order was migrated.', '%1$d orders were migrated.', $processed, 'woocommerce-custom-orders-table' ),
-					$processed
-				)
-			);
-		} else {
-			WP_CLI::warning(
-				sprintf(
-					/* Translators: %1$d is the number of orders migrated, %2$d is the number of skipped records. */
-					_n( '%1$d order was migrated, with %2$d skipped.', '%1$d orders were migrated, with %2$d skipped.', $processed, 'woocommerce-custom-orders-table' ),
-					$processed,
-					count( $this->skipped_ids )
-				)
-			);
-		}
+			return $processed;
 	}
 
 	/**

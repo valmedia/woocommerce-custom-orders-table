@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name:          WooCommerce - Custom Orders Table
+ * Plugin Name:          WooCommerce Custom Orders Table
  * Plugin URI:           https://github.com/liquidweb/woocommerce-custom-orders-tables
  * Description:          Store WooCommerce order data in a custom table for improved performance.
  * Version:              1.0.0-rc3
@@ -9,12 +9,14 @@
  * License:              GPLv3 or later
  * License URI:          https://www.gnu.org/licenses/gpl-3.0.html
  *
- * WC requires at least: 3.5.1
- * WC tested up to:      3.6.4
+ * WC requires at least: 3.8.0
+ * WC tested up to:      4.0.0
  *
  * @package WooCommerce_Custom_Orders_Table
  * @author  Liquid Web
  */
+
+defined( 'ABSPATH' ) || exit;
 
 /* Define constants to use throughout the plugin. */
 define( 'WC_CUSTOM_ORDER_TABLE_URL', plugin_dir_url( __FILE__ ) );
@@ -31,13 +33,20 @@ define( 'WC_CUSTOM_ORDER_TABLE_PATH', plugin_dir_path( __FILE__ ) );
  * @return void
  */
 function wc_custom_order_table_autoload( $class ) {
-	// Bail early if the class/trait/interface is not in the root namespace.
-	if ( strpos( $class, '\\' ) !== false ) {
-		return;
+
+	/**
+	 * Eventually, we'll be moving towards a proper, PSR-4 autoloading scheme.
+	 *
+	 * @link https://github.com/woocommerce/woocommerce-example-package
+	 * @link https://github.com/liquidweb/woocommerce-custom-orders-table/issues/153
+	 */
+	if ( strpos( $class, '\\' ) === false ) {
+		$filename = strtolower( 'class-' . str_replace( '_', '-', $class ) . '.php' );
+	} else {
+		$class    = str_replace( 'LiquidWeb\\WooCommerceCustomOrdersTable\\', '', $class );
+		$filename = str_replace( '\\', '/', $class ) . '.php';
 	}
 
-	// Assemble file path and name according to WordPress code style.
-	$filename = strtolower( 'class-' . str_replace( '_', '-', $class ) . '.php' );
 	$filepath = WC_CUSTOM_ORDER_TABLE_PATH . 'includes/' . $filename;
 
 	// Bail if the file name we generated does not exist.

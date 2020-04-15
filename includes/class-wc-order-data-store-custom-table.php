@@ -52,7 +52,7 @@ class WC_Order_Data_Store_Custom_Table extends WC_Order_Data_Store_CPT {
 				array(
 					'order_id' => $order_id,
 				)
-			); // WPCS: DB call OK.
+			);
 		}
 	}
 
@@ -104,7 +104,7 @@ class WC_Order_Data_Store_Custom_Table extends WC_Order_Data_Store_CPT {
 				$order->get_id()
 			),
 			ARRAY_A
-		); // WPCS: DB call OK.
+		);
 
 		// Return early if there's no matching row in the orders table.
 		if ( empty( $data ) ) {
@@ -287,7 +287,7 @@ class WC_Order_Data_Store_Custom_Table extends WC_Order_Data_Store_CPT {
 				'SELECT order_id FROM ' . esc_sql( $table ) . ' WHERE order_key = %s',
 				$order_key
 			)
-		); // WPCS: DB call OK.
+		);
 	}
 
 	/**
@@ -343,6 +343,7 @@ class WC_Order_Data_Store_Custom_Table extends WC_Order_Data_Store_CPT {
 					$where[] = "{$column} LIKE %s";
 				}
 
+				// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
 				$order_ids = array_merge(
 					$order_ids,
 					$wpdb->get_col(
@@ -351,7 +352,8 @@ class WC_Order_Data_Store_Custom_Table extends WC_Order_Data_Store_CPT {
 							array_fill( 0, count( $where ), '%' . $wpdb->esc_like( $term ) . '%' )
 						)
 					)
-				);  // WPCS: DB call OK, Unprepared SQL ok, PreparedSQLPlaceholders replacement count ok.
+				);
+				// phpcs:enable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
 			}
 
 			// For anything else, fall back to postmeta.
@@ -370,7 +372,7 @@ class WC_Order_Data_Store_Custom_Table extends WC_Order_Data_Store_CPT {
 							)
 						)
 					)
-				); // WPCS: DB call OK.
+				);
 			}
 		}
 
@@ -385,7 +387,7 @@ class WC_Order_Data_Store_Custom_Table extends WC_Order_Data_Store_CPT {
 					'%' . $wpdb->esc_like( $term ) . '%'
 				)
 			)
-		); // WPCS: DB call OK.
+		);
 
 		// Reduce the array of order IDs to unique values.
 		$order_ids = array_unique( $order_ids );

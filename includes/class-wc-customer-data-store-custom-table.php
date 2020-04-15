@@ -13,17 +13,6 @@
 class WC_Customer_Data_Store_Custom_Table extends WC_Customer_Data_Store {
 
 	/**
-	 * Register callbacks when the data store is first instantiated.
-	 */
-	public function __construct() {
-		add_filter( 'woocommerce_pre_customer_bought_product', __CLASS__ . '::pre_customer_bought_product', 10, 4 );
-
-		// Handle deleting a customer from the database.
-		add_action( 'deleted_user', __CLASS__ . '::reset_order_customer_id_on_deleted_user' );
-		remove_action( 'deleted_user', 'wc_reset_order_customer_id_on_deleted_user' );
-	}
-
-	/**
 	 * Gets the customers last order.
 	 *
 	 * @global $wpdb
@@ -49,7 +38,7 @@ class WC_Customer_Data_Store_Custom_Table extends WC_Customer_Data_Store {
 				ORDER BY posts.ID DESC LIMIT 1',
 				array_merge( array( $customer->get_id() ), array_keys( $statuses ) )
 			)
-		); // WPCS: DB call OK.
+		);
 
 		return $last_order ? wc_get_order( (int) $last_order ) : false;
 	}
@@ -81,7 +70,7 @@ class WC_Customer_Data_Store_Custom_Table extends WC_Customer_Data_Store {
 					AND   posts.post_status IN (" . implode( ', ', array_fill( 0, count( $statuses ), '%s' ) ) . ')',
 					array_merge( array( $customer->get_id() ), array_keys( $statuses ) )
 				)
-			); // WPCS: DB call OK.
+			);
 			update_user_meta( $customer->get_id(), '_order_count', $count );
 		}
 
@@ -131,12 +120,23 @@ class WC_Customer_Data_Store_Custom_Table extends WC_Customer_Data_Store {
 			 * @param WC_Customer $customer The customer being queried.
 			 */
 			$sql   = apply_filters( 'woocommerce_customer_get_total_spent_query', $sql, $customer );
-			$spent = (float) $wpdb->get_var( $sql ); // WPCS: Unprepared SQL OK, DB call OK.
+			$spent = (float) $wpdb->get_var( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 			update_user_meta( $customer->get_id(), '_money_spent', $spent );
 		}
 
 		return $spent;
+	}
+
+	/**
+	 * Register callbacks when the data store is first instantiated.
+	 */
+	public static function add_hooks() {
+		add_filter( 'woocommerce_pre_customer_bought_product', __CLASS__ . '::pre_customer_bought_product', 10, 4 );
+
+		// Handle deleting a customer from the database.
+		add_action( 'deleted_user', __CLASS__ . '::reset_order_customer_id_on_deleted_user' );
+		remove_action( 'deleted_user', 'wc_reset_order_customer_id_on_deleted_user' );
 	}
 
 	/**
@@ -198,7 +198,7 @@ class WC_Customer_Data_Store_Custom_Table extends WC_Customer_Data_Store {
 					AND im.meta_value != 0",
 					array_merge( $statuses, $customer_data, $customer_data )
 				)
-			); // WPCS: DB call OK.
+			);
 			$result = array_map( 'absint', $result );
 
 			set_transient( $transient_name, $result, DAY_IN_SECONDS * 30 );
@@ -219,7 +219,7 @@ class WC_Customer_Data_Store_Custom_Table extends WC_Customer_Data_Store {
 			wc_custom_order_table()->get_table_name(),
 			array( 'customer_id' => 0 ),
 			array( 'customer_id' => $user_id )
-		); // WPCS: DB call OK.
+		);
 	}
 
 	/**

@@ -55,6 +55,8 @@ class WooCommerce_Custom_Orders_Table {
 
 		// Move custom meta keys query to the ordermeta table.
 		add_action( 'get_meta_sql', 'WooCommerce_Custom_Orders_Table_Filters::get_meta_sql', 10, 6 );
+    
+		WC_Customer_Data_Store_Custom_Table::add_hooks();
 
 		// Register the table within WooCommerce.
 		add_filter( 'woocommerce_install_get_tables', array( $this, 'register_tables_name' ) );
